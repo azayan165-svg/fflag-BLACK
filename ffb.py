@@ -17,6 +17,7 @@ import math
 APP_DIR = Path(os.path.expanduser("~")) / ".Zenstrap"
 APP_DIR.mkdir(parents=True, exist_ok=True)
 USER_FLAGS_FILE = APP_DIR / "fflags.json"
+SHORTCUT_CREATED_FILE = APP_DIR / "shortcut_created"
 
 if not USER_FLAGS_FILE.exists():
     USER_FLAGS_FILE.write_text(json.dumps({}, indent=4))
@@ -250,6 +251,47 @@ def launch_roblox():
     except:
         return False
 
+def create_desktop_shortcut():
+    """Create a desktop shortcut that automatically loads FFlags and launches Roblox"""
+    try:
+        import winshell
+        from win32com.client import Dispatch
+        
+        desktop = winshell.desktop()
+        shortcut_path = os.path.join(desktop, "Roblox.lnk")
+        
+        # Check if shortcut already exists
+        if os.path.exists(shortcut_path):
+            print("Desktop shortcut already exists")
+            return True
+        
+        # Get the path to this executable
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
+        
+        # Create the shortcut
+        shell = Dispatch('WScript.Shell')
+        shortcut = shell.CreateShortCut(shortcut_path)
+        shortcut.Targetpath = exe_path
+        shortcut.Arguments = "--auto-launch"
+        shortcut.WorkingDirectory = os.path.dirname(exe_path)
+        shortcut.IconLocation = exe_path  # Use the executable as icon
+        shortcut.Description = "Zenstrap - Roblox with FFlags"
+        shortcut.save()
+        
+        # Mark that we've created the shortcut
+        SHORTCUT_CREATED_FILE.write_text("1")
+        
+        print(f"Created desktop shortcut at: {shortcut_path}")
+        return True
+        
+    except ImportError:
+        print("Required modules for shortcut creation not available.")
+        print("Please install: pip install pywin32 winshell")
+        return False
+    except Exception as e:
+        print(f"Failed to create shortcut: {e}")
+        return False
+
 def format_flags_for_display(flags_dict):
     if not flags_dict:
         return ""
@@ -344,6 +386,7 @@ class GradientBackgroundWidget(QtWidgets.QWidget):
         
         if hasattr(self, 'width') and hasattr(self, 'height'):
             for particle in self.particles:
+                # Gentle floating motion
                 particle['x'] += particle['speed'] * particle['direction']
                 particle['y'] += math.sin(self.animation_offset * 0.1 + particle['wave_offset']) * 0.2
                 
@@ -440,25 +483,49 @@ class TransparentTextEdit(QtWidgets.QTextEdit):
         super().paintEvent(event)
 
 class SimpleFFlagInjector(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, auto_launch=False, start_in_tray=False):
         super().__init__()
         self.setWindowTitle("Zenstrap")
+        
+        self.auto_launch = auto_launch
+        self.start_in_tray = start_in_tray
         
         self.setup_tray()
         
         global user_flags
         user_flags = load_user_flags()
         
+        # Load offsets in background
         threading.Thread(target=self.load_offsets, daemon=True).start()
+        
+        # Start injection monitor in background
         threading.Thread(target=self.injection_monitor, daemon=True).start()
         
-        self.setup_ui()
+        # Create desktop shortcut on first run
+        if not SHORTCUT_CREATED_FILE.exists():
+            threading.Thread(target=self.create_shortcut_thread, daemon=True).start()
         
-        self.center_window()
-        self.show()
+        # If auto-launch mode, hide the window and launch Roblox
+        if self.auto_launch:
+            self.hide()
+            self.save_and_launch()
+        elif not self.start_in_tray:
+            self.setup_ui()
+            self.center_window()
+            self.show()
+        else:
+            # Start in system tray
+            self.hide()
         
         self.title_animation_offset = 0
         self.bg_animation_offset = 0
+    
+    def create_shortcut_thread(self):
+        """Create shortcut in a separate thread"""
+        try:
+            create_desktop_shortcut()
+        except Exception as e:
+            print(f"Failed to create shortcut: {e}")
     
     def center_window(self):
         screen_geometry = QtWidgets.QApplication.primaryScreen().availableGeometry()
@@ -480,10 +547,16 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
         self.tray_icon.setToolTip("Zenstrap")
         
         tray_menu = QtWidgets.QMenu()
-        show_action = tray_menu.addAction("Show")
+        show_action = tray_menu.addAction("Show Zenstrap")
         show_action.triggered.connect(self.show_window)
+        
+        launch_action = tray_menu.addAction("Launch Roblox")
+        launch_action.triggered.connect(self.save_and_launch)
+        
+        tray_menu.addSeparator()
         quit_action = tray_menu.addAction("Quit")
         quit_action.triggered.connect(self.quit_app)
+        
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_activated)
         self.tray_icon.show()
@@ -638,7 +711,9 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
             all_offsets = offsets
     
     def save_and_launch(self):
-        self.save_current_text()
+        # Only save if we have the UI setup
+        if hasattr(self, 'json_input'):
+            self.save_current_text()
         
         global user_flags
         if not user_flags:
@@ -683,8 +758,12 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
         self.hide()
     
     def show_window(self):
+        # Setup UI if it hasn't been setup yet
+        if not hasattr(self, 'json_input'):
+            self.setup_ui()
+            self.center_window()
+        
         self.showNormal()
-        self.center_window()
         self.raise_()
         self.activateWindow()
     
@@ -737,10 +816,14 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
         QtWidgets.QApplication.quit()
 
 def main():
+    # Check for command line arguments
+    auto_launch = "--auto-launch" in sys.argv
+    start_in_tray = "--tray" in sys.argv or auto_launch
+    
     app = QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     
-    injector = SimpleFFlagInjector()
+    injector = SimpleFFlagInjector(auto_launch=auto_launch, start_in_tray=start_in_tray)
     
     sys.exit(app.exec())
 
