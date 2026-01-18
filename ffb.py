@@ -344,7 +344,6 @@ class GradientBackgroundWidget(QtWidgets.QWidget):
         
         if hasattr(self, 'width') and hasattr(self, 'height'):
             for particle in self.particles:
-                # Gentle floating motion
                 particle['x'] += particle['speed'] * particle['direction']
                 particle['y'] += math.sin(self.animation_offset * 0.1 + particle['wave_offset']) * 0.2
                 
@@ -549,30 +548,6 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
         button_layout.setSpacing(8)
         button_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         
-        self.import_btn = QtWidgets.QPushButton("Import")
-        self.import_btn.setFixedSize(100, 36)
-        self.import_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(40, 40, 40, 200);
-                color: white;
-                border: 1px solid rgba(100, 100, 100, 150);
-                border-radius: 12px;
-                font-weight: bold;
-                font-size: 12px;
-                padding: 3px;
-            }
-            QPushButton:hover {
-                background-color: rgba(60, 60, 60, 220);
-                border: 1px solid rgba(140, 140, 140, 180);
-            }
-            QPushButton:pressed {
-                background-color: rgba(30, 30, 30, 200);
-                border: 1px solid rgba(120, 120, 120, 160);
-            }
-        """)
-        self.import_btn.clicked.connect(self.save_current_text)
-        self.import_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        
         self.launch_btn = QtWidgets.QPushButton("Save and Launch")
         self.launch_btn.setFixedSize(120, 36)
         self.launch_btn.setStyleSheet("""
@@ -597,7 +572,6 @@ class SimpleFFlagInjector(QtWidgets.QMainWindow):
         self.launch_btn.clicked.connect(self.save_and_launch)
         self.launch_btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         
-        button_layout.addWidget(self.import_btn)
         button_layout.addWidget(self.launch_btn)
         
         self.main_layout.addWidget(button_container, 0, QtCore.Qt.AlignmentFlag.AlignRight)
